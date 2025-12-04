@@ -370,12 +370,19 @@ begin
     ovStringFormat.SetAlignment(StringAlignmentNear);       // H-Left
     ovStringFormat.SetLineAlignment(StringAlignmentCenter); // V-Center
     //ovStringFormat.SetTrimming(StringTrimmingEllipsisCharacter);
-    ovFontFamily   := TGPFontFamily.Create('Segoe UI Emoji');
-    ovFont         := TGPFont.Create(ovFontFamily, iTextHeight, FontStyleRegular, UnitPixel);
-    bgBitmap.Assign(bgBitmapSrc);    bgBitmap.Canvas.Lock;
-        ovGDIGraphics  := TGPGraphics.Create(bgBitmap.Canvas.Handle);  End  Else bgBitmap.Canvas.Draw(0,0,bgBitmapSrc);
 
-  // Copy cached background bitmap  ovBrush := TGPSolidBrush.Create(inactiveTextColor);
+    ovFontFamily   := TGPFontFamily.Create('Segoe UI Emoji');
+    ovFont         := TGPFont.Create(ovFontFamily, iTextHeight, FontStyleRegular, UnitPixel);
+
+    bgBitmap.Assign(bgBitmapSrc);
+    bgBitmap.Canvas.Lock;
+
+    ovGDIGraphics  := TGPGraphics.Create(bgBitmap.Canvas.Handle);
+  End
+  Else bgBitmap.Canvas.Draw(0,0,bgBitmapSrc);
+
+  // Copy cached background bitmap
+  ovBrush := TGPSolidBrush.Create(inactiveTextColor);
 
   // Draw Text
   ovStringRect.Height := iLineHeight;
