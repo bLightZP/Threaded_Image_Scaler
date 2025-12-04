@@ -362,7 +362,10 @@ begin
     iTextHeight    := Trunc(iLineHeight * 0.5);
     iCenterY       := (clientHeight div 2) - (iLineHeight div 2);
     iLineCount     := clientHeight div iLineHeight;
-    ovStringFormat := TGPStringFormat.Create(TGPStringFormat.GenericTypographic); // GenericTypographic is closer to standard GDI typography    ovStringFlags  := ovStringFormat.GetFormatFlags;    ovStringFlags  := ovStringFlags or StringFormatFlagsNoWrap or StringFormatFlagsLineLimit;
+
+    ovStringFormat := TGPStringFormat.Create(TGPStringFormat.GenericTypographic); // GenericTypographic is closer to standard GDI typography
+    ovStringFlags  := ovStringFormat.GetFormatFlags;
+    ovStringFlags  := ovStringFlags or StringFormatFlagsNoWrap or StringFormatFlagsLineLimit;
     ovStringFormat.SetFormatFlags(ovStringFlags);
     ovStringFormat.SetAlignment(StringAlignmentNear);       // H-Left
     ovStringFormat.SetLineAlignment(StringAlignmentCenter); // V-Center
