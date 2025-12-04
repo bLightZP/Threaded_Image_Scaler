@@ -53,8 +53,11 @@ type
     iTextMargin : Integer;
     iTextWidth  : Integer;
     iTextHeight : Integer;
-    iLineHeight : Integer;    iLineCount  : Integer;    iCenterY    : Integer;    iItemIndex  : Integer;
-
+    iLineHeight : Integer;
+    iLineCount  : Integer;
+    iCenterY    : Integer;
+    iItemIndex  : Integer;
+    
     // Colors
     bgColor           : Cardinal;
     activeTextColor   : Cardinal;
