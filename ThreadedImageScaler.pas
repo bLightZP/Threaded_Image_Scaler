@@ -463,7 +463,8 @@ begin
         If TImageScalerThread(threadList[I]).ThreadState = threadStateFinished then
         Begin
           TImageScalerThread(threadList[I]).ThreadState := threadStateSynched;
-          // Sync TGDBitmaps with main thread based on IconID
+
+          // Sync TGDBitmaps with main thread based on IconID
           If TImageScalerThread(threadList[I]).fIconData <> nil then
           Begin
             // MyIconList is a list of TGDBitmap;
