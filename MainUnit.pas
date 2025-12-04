@@ -355,10 +355,14 @@ begin
       ovPath.Free;
     End;
 
-    bgBitmap       := TBitmap.Create;    iTextMargin    := clientWidth  div 32;    iTextWidth     := clientWidth-(iTextMargin*2);    iLineHeight    := clientHeight div 12;    iTextHeight    := Trunc(iLineHeight * 0.5);    iCenterY       := (clientHeight div 2) - (iLineHeight div 2);    iLineCount     := clientHeight div iLineHeight;
-    ovStringFormat := TGPStringFormat.Create(TGPStringFormat.GenericTypographic); // GenericTypographic is closer to standard GDI typography
-    ovStringFlags  := ovStringFormat.GetFormatFlags;
-    ovStringFlags  := ovStringFlags or StringFormatFlagsNoWrap or StringFormatFlagsLineLimit;
+    bgBitmap       := TBitmap.Create;
+    iTextMargin    := clientWidth  div 32;
+    iTextWidth     := clientWidth-(iTextMargin*2);
+    iLineHeight    := clientHeight div 12;
+    iTextHeight    := Trunc(iLineHeight * 0.5);
+    iCenterY       := (clientHeight div 2) - (iLineHeight div 2);
+    iLineCount     := clientHeight div iLineHeight;
+    ovStringFormat := TGPStringFormat.Create(TGPStringFormat.GenericTypographic); // GenericTypographic is closer to standard GDI typography    ovStringFlags  := ovStringFormat.GetFormatFlags;    ovStringFlags  := ovStringFlags or StringFormatFlagsNoWrap or StringFormatFlagsLineLimit;
     ovStringFormat.SetFormatFlags(ovStringFlags);
     ovStringFormat.SetAlignment(StringAlignmentNear);       // H-Left
     ovStringFormat.SetLineAlignment(StringAlignmentCenter); // V-Center
