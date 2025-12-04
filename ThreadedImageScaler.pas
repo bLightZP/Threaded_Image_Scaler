@@ -404,12 +404,10 @@ begin
   ThreadState := threadStateFinished;
 end;
 
-
 procedure TImageScalerManagerThread.StartProcessing;
 begin
-  SetEvent(FEvent);
-end;
-
+  SetEvent(FEvent);
+end;
 
 procedure TImageScalerManagerThread.AddEntry(iconSourceID, iconWidth, iconHeight : Integer; iconFileName : String);
 var
@@ -435,72 +433,65 @@ end;
 
 procedure TImageScalerManagerThread.ClearEntries;
 var
-  I : Integer;
-begin
-  // Make sure we're not paused
-  If ThreadState = 1 then
-    StartProcessing;
-
+  I : Integer;
+begin
+  // Make sure we're not paused
+  If ThreadState = 1 then
+    StartProcessing;
   // Signal Abort
-  fAbortSync := True;
-
+  fAbortSync := True;
   // Wait for thread to clear queue or exit
-  While (Terminated = False) and (FAbortSync = True) do
-    Sleep(1);
-End;
+  While (Terminated = False) and (FAbortSync = True) do
+    Sleep(1);
+End;
 
 
 
 procedure TImageScalerManagerThread.SyncUpdates;
 var
-  I             : Integer;
-  iCount        : Integer;
+  I             : Integer;
+  iCount        : Integer;
 begin
-  If Terminated = False then
-  Begin
-    If fAbortSync = False then
-    Begin
-      iCount := 0;
-      For I := threadList.Count-1 downto 0 do
-      Begin
-        If TImageScalerThread(threadList[I]).ThreadState = threadStateFinished then
-        Begin
-          TImageScalerThread(threadList[I]).ThreadState := threadStateSynched;
-
+  If Terminated = False then
+  Begin
+    If fAbortSync = False then
+    Begin
+      iCount := 0;
+      For I := threadList.Count-1 downto 0 do
+      Begin
+        If TImageScalerThread(threadList[I]).ThreadState = threadStateFinished then
+        Begin
+          TImageScalerThread(threadList[I]).ThreadState := threadStateSynched;
           // Sync TGDBitmaps with main thread based on IconID
-          If TImageScalerThread(threadList[I]).fIconData <> nil then
-          Begin
-            // MyIconList is a list of TGDBitmap;
-            MainForm.iconList[TImageScalerThread(threadList[I]).fIconID] := TImageScalerThread(threadList[I]).fIconData;
-            Inc(iCount);
-          End;
-        End;
-      End;
-
+          If TImageScalerThread(threadList[I]).fIconData <> nil then
+          Begin
+            // MyIconList is a list of TGDBitmap;
+            MainForm.iconList[TImageScalerThread(threadList[I]).fIconID] := TImageScalerThread(threadList[I]).fIconData;
+            Inc(iCount);
+          End;
+        End;
+      End;
       If iCount > 0 then
-      Begin
-        // Update the UI as-needed
-        If uiAnimating = False then
-          MainForm.DrawUserInterface else
-          delayedDrawUserInterface := True;
-      End;
-    End
-      else
-    Begin
-      // Release queued entries
-      For I := 0 to pList.Count-1 do
-        Dispose(PImageScalerRecord(pList[I]));
-      pList.Clear;
+      Begin
+        // Update the UI as-needed
+        If uiAnimating = False then
+          MainForm.DrawUserInterface else
+          delayedDrawUserInterface := True;
+      End;
+    End
+      else
+    Begin
+      // Release queued entries
+      For I := 0 to pList.Count-1 do
+        Dispose(PImageScalerRecord(pList[I]));
+      pList.Clear;
 
-      For I := 0 to mdList.Count-1 do
-        Dispose(PImageScalerRecord(mdList[I]));
-      mdList.Clear;
-
+      For I := 0 to mdList.Count-1 do
+        Dispose(PImageScalerRecord(mdList[I]));
+      mdList.Clear;
       fAbortSync := False;
-    End;
-  End;
-end;
-
-
+    End;
+  End;
+end;
 
 end.
