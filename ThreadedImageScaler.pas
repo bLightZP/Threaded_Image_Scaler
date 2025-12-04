@@ -438,20 +438,21 @@ begin
   // Make sure we're not paused
   If ThreadState = 1 then
     StartProcessing;
-  // Signal Abort
+
+  // Signal Abort
   fAbortSync := True;
-  // Wait for thread to clear queue or exit
+
+  // Wait for thread to clear queue or exit
   While (Terminated = False) and (FAbortSync = True) do
     Sleep(1);
 End;
-
 
 
 procedure TImageScalerManagerThread.SyncUpdates;
 var
   I             : Integer;
   iCount        : Integer;
-begin
+begin
   If Terminated = False then
   Begin
     If fAbortSync = False then
@@ -471,7 +472,8 @@ var
           End;
         End;
       End;
-      If iCount > 0 then
+
+      If iCount > 0 then
       Begin
         // Update the UI as-needed
         If uiAnimating = False then
@@ -489,7 +491,7 @@ var
       For I := 0 to mdList.Count-1 do
         Dispose(PImageScalerRecord(mdList[I]));
       mdList.Clear;
-      fAbortSync := False;
+      fAbortSync := False;
     End;
   End;
 end;
