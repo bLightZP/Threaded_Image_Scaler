@@ -5,7 +5,7 @@ interface
 
 uses
   Windows, Messages, SysUtils, StdCtrls, Variants, Classes, Graphics, Controls, ActiveX, syncobjs,
-  Dialogs, ExtCtrls, GDIPAPI ,GDIPOBJ, tntclasses;
+  Dialogs, ExtCtrls, GDIPAPI ,GDIPOBJ;
 
 
 const
@@ -22,7 +22,7 @@ type
     scaleIconWidth  : Integer;
     scaleIconHeight : Integer;
     scaleIconID               : Integer;
-    scaleIconFileName         : WideString;
+    scaleIconFileName         : String;
   End;
   PImageScalerRecord = ^TImageScalerRecord;
 
@@ -32,12 +32,14 @@ type
     FAbortSync      : Boolean;
     FEvent          : THandle;
     FSyncCS         : TCriticalSection;
+    CacheWriteCS    : TCriticalSection;
     threadList      : TList;
     mdList          : TList; // Queue list, protected by a CriticalSection
     pList           : TList; // Processing list
   public
     ThreadState     : Integer;
-    procedure AddEntry(iconSourceID, iconWidth, iconHeight : Integer);
+    maxScalers      : Integer; // Maximum active scaling threads
+    procedure AddEntry(iconSourceID, iconWidth, iconHeight : Integer; iconFileName : String);
 
     procedure ClearEntries;
     procedure StartProcessing;
@@ -52,16 +54,16 @@ type
     fIconWidth    : Integer;
     fIconHeight   : Integer;
     fIconID       : Integer;
-    fIconFileName : WideString;
+    fIconFileName : String;
     ThreadState   : Integer;
-    constructor Create(const iconID, iconWidth, iconHeight : Integer; iconFileName : WideString);
+    constructor Create(const iconID, iconWidth, iconHeight : Integer; iconFileName : String);
   end;
 
 
 implementation
 
 uses
-  ShellAPI, tntsysutils, math;
+  ShellAPI, math, mainunit;
 
 
 // GDI+ helper functions
@@ -149,7 +151,7 @@ end;
 
 // Worker thread
 
-constructor TImageScalerThread.Create(const iconID, iconWidth, iconHeight : Integer; iconFileName : WideString);
+constructor TImageScalerThread.Create(const iconID, iconWidth, iconHeight : Integer; iconFileName : String);
 begin
   inherited Create(True);
 
@@ -169,14 +171,14 @@ end;
 procedure TImageScalerThread.Execute;
 var
   I                : Integer;
-  mStream          : TTNTMemoryStream;
-  sExt             : WideString;
+  mStream          : TMemoryStream;
+  sExt             : String;
 
-  procedure GetFileFromCache(var sFile : WideString; var memStream : TTNTMemoryStream);
+  procedure GetFileFromCache(var sFile : String; var memStream : TMemoryStream);
   var
     dlStatus : String;
   begin
-    If WideFileExists(sFile) = True then
+    If FileExists(sFile) = True then
     Begin
       // Try using cached file
       Try memStream.LoadFromFile(sFile); Except memStream.Clear; End;
@@ -184,7 +186,7 @@ var
   end; // GetFileFromCacheOrDownload
 
 
-  procedure DecodeAndResizeImage(var memStream : TTNTMemoryStream);
+  procedure DecodeAndResizeImage(var memStream : TMemoryStream);
   var
     syncGDIImage     : TGPBitmap;
   begin
@@ -193,7 +195,7 @@ var
     If (syncGDIImage <> nil) then
     Begin
       // Resize GDI+ image
-      If  Terminated = False then
+      If Terminated = False then
         fIconData := GDIPScaleGPBitmapToGDBitmapMaintainAR(syncGDIImage,fIconWidth, fIconHeight);
       syncGDIImage.Free;
     End;
@@ -201,7 +203,7 @@ var
 
 
 begin
-  mStream    := TTNTMemoryStream.Create;
+  mStream    := TMemoryStream.Create;
 
   GetFileFromCache(fIconFileName,mStream);
 
@@ -217,7 +219,6 @@ end;
 
 procedure TImageScalerManagerThread.Execute;
 var
-  maxScalers     : Integer; // Maximum active scaling threads
   I              : Integer;
   iComplete      : Integer;
 
@@ -295,7 +296,7 @@ begin
             scaleIconID,
             scaleIconWidth,
             scaleIconHeight,
-            scaleIconFileName);
+            scaleIconFileName));
       End;
       Dispose(PImageScalerRecord(pList[0]));
       pList.Delete(0);
@@ -310,7 +311,7 @@ begin
           Inc(iComplete);
 
       // At least one thread is done, sync updates
-      If (iComplete > 0) and (CloseExecuted = False) and (CloseIssued = False) then
+      If (iComplete > 0) then
       Begin
         Synchronize(SyncUpdates);
 
@@ -410,24 +411,23 @@ begin
 end;
 
 
-procedure TImageScalerManagerThread.AddEntry(iconSourceID, iconWidth, iconHeight : Integer; iconFileName : WideString);
+procedure TImageScalerManagerThread.AddEntry(iconSourceID, iconWidth, iconHeight : Integer; iconFileName : String);
 var
   nEntry : PImageScalerRecord;
 begin
-    If Terminated = False then
-    Begin
-      New(nEntry);
-      nEntry^.scaleIconWidth    := iconWidth;
-      nEntry^.scaleIconHeight   := iconHeight;
-      nEntry^.scaleIconID       := iconSourceID;
-      nEntry^.scaleIconFileName := iconFileName;
+  If Terminated = False then
+  Begin
+    New(nEntry);
+    nEntry^.scaleIconWidth    := iconWidth;
+    nEntry^.scaleIconHeight   := iconHeight;
+    nEntry^.scaleIconID       := iconSourceID;
+    nEntry^.scaleIconFileName := iconFileName;
 
-      fSyncCS.Enter;
-      Try
-        mdList.Add(nEntry);
-      Finally
-        fSyncCS.Leave;
-      End;
+    fSyncCS.Enter;
+    Try
+      mdList.Add(nEntry);
+    Finally
+      fSyncCS.Leave;
     End;
   End;
 end;
@@ -471,7 +471,7 @@ var
           If TImageScalerThread(threadList[I]).fIconData <> nil then
           Begin
             // MyIconList is a list of TGDBitmap;
-            MyIconList[TImageScalerThread(threadList[I]).fIconID] := TImageScalerThread(threadList[I]).fIconData;
+            MainForm.iconList[TImageScalerThread(threadList[I]).fIconID] := TImageScalerThread(threadList[I]).fIconData;
             Inc(iCount);
           End;
         End;
@@ -481,8 +481,8 @@ var
       Begin
         // Update the UI as-needed
         If uiAnimating = False then
-          DrawUserInterface else
-          DelayedDrawUserInterface := True;
+          MainForm.DrawUserInterface else
+          delayedDrawUserInterface := True;
       End;
     End
       else
