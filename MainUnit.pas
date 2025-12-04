@@ -49,17 +49,13 @@ type
     iconList    : TList;
     bgBitmap    : TBitmap;
     bgBitmapSrc : TBitmap;
-
     iScrollOfs  : Integer;
     iTextMargin : Integer;
     iTextWidth  : Integer;
     iTextHeight : Integer;
-    iLineHeight : Integer;
-    iLineCount  : Integer;
-    iCenterY    : Integer;
-    iItemIndex  : Integer;
+    iLineHeight : Integer;    iLineCount  : Integer;    iCenterY    : Integer;    iItemIndex  : Integer;
 
-    // Colors
+    // Colors
     bgColor           : Cardinal;
     activeTextColor   : Cardinal;
     inactiveTextColor : Cardinal;
@@ -356,15 +352,7 @@ begin
       ovPath.Free;
     End;
 
-    bgBitmap       := TBitmap.Create;
-
-    iTextMargin    := clientWidth  div 32;
-    iTextWidth     := clientWidth-(iTextMargin*2);
-    iLineHeight    := clientHeight div 12;
-    iTextHeight    := Trunc(iLineHeight * 0.5);
-    iCenterY       := (clientHeight div 2) - (iLineHeight div 2);
-    iLineCount     := clientHeight div iLineHeight;
-
+    bgBitmap       := TBitmap.Create;    iTextMargin    := clientWidth  div 32;    iTextWidth     := clientWidth-(iTextMargin*2);    iLineHeight    := clientHeight div 12;    iTextHeight    := Trunc(iLineHeight * 0.5);    iCenterY       := (clientHeight div 2) - (iLineHeight div 2);    iLineCount     := clientHeight div iLineHeight;
     ovStringFormat := TGPStringFormat.Create(TGPStringFormat.GenericTypographic); // GenericTypographic is closer to standard GDI typography
     ovStringFlags  := ovStringFormat.GetFormatFlags;
     ovStringFlags  := ovStringFlags or StringFormatFlagsNoWrap or StringFormatFlagsLineLimit;
@@ -372,19 +360,12 @@ begin
     ovStringFormat.SetAlignment(StringAlignmentNear);       // H-Left
     ovStringFormat.SetLineAlignment(StringAlignmentCenter); // V-Center
     //ovStringFormat.SetTrimming(StringTrimmingEllipsisCharacter);
-
-    //ovFontFamily   := TGPFontFamily.Create('Segoe UI Emoji');
-    ovFontFamily   := TGPFontFamily.Create('Arial');
+    ovFontFamily   := TGPFontFamily.Create('Segoe UI Emoji');
     ovFont         := TGPFont.Create(ovFontFamily, iTextHeight, FontStyleRegular, UnitPixel);
+    bgBitmap.Assign(bgBitmapSrc);    bgBitmap.Canvas.Lock;
+        ovGDIGraphics  := TGPGraphics.Create(bgBitmap.Canvas.Handle);  End  Else bgBitmap.Canvas.Draw(0,0,bgBitmapSrc);
 
-    bgBitmap.Assign(bgBitmapSrc);
-    bgBitmap.Canvas.Lock;
-    ovGDIGraphics  := TGPGraphics.Create(bgBitmap.Canvas.Handle);
-  End
-  Else bgBitmap.Canvas.Draw(0,0,bgBitmapSrc);
-
-  // Copy cached background bitmap
-  ovBrush := TGPSolidBrush.Create(inactiveTextColor);
+  // Copy cached background bitmap  ovBrush := TGPSolidBrush.Create(inactiveTextColor);
 
   // Draw Text
   ovStringRect.Height := iLineHeight;
