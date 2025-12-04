@@ -8,4 +8,6 @@ While the images are loaded and scaled, anti-aliased text is drawn against a sem
 
 You can use the keyboard to navigate the list or press space to animate to a random list position every 1000ms.
 
+The demo also showcases how to use GDI+ to create a per-pixel semi-transparent window with rounded corners and animated scrolling text.
+
 Flag images courtsey - https://flagpedia.net
