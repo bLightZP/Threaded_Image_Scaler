@@ -1,2 +1,3 @@
 # Threaded Image Scaler
-A multi-threaded image decoder and scaler based on GDI+
+A Delphi 7 compatible multi-threaded image decoder and scaler based on GDI+
+
