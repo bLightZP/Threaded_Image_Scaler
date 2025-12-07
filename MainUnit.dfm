@@ -28,4 +28,11 @@ object MainForm: TMainForm
     Left = 336
     Top = 56
   end
+  object updateTimer: TTimer
+    Enabled = False
+    Interval = 10
+    OnTimer = updateTimerTimer
+    Left = 300
+    Top = 56
+  end
 end

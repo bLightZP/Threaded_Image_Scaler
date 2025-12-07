@@ -12,30 +12,39 @@ const
   threadStateCreated    = 0;
   threadStateWaiting    = 1;
   threadStateProcessing = 2;
+  threadStateCleanup    = 254;
   threadStateFinished   = 255;
-  threadStateSynched    = 256;
+  //threadStateSynched    = 256;
 
 type
   // Meta-data scraping record
   TImageScalerRecord =
   Record
-    scaleIconWidth  : Integer;
-    scaleIconHeight : Integer;
-    scaleIconID               : Integer;
-    scaleIconFileName         : String;
+    scaleIconWidth    : Integer;
+    scaleIconHeight   : Integer;
+    scaleIconID       : Integer;
+    scaleIconFileName : String;
   End;
   PImageScalerRecord = ^TImageScalerRecord;
+
+  TSyncRecord =
+  Record
+    syncIconID               : Integer;
+    syncIconData             : TGPBitmap;
+  End;
+  PSyncRecord = ^TSyncRecord;
 
   TImageScalerManagerThread = Class(TThread)
     procedure Execute; override;
   private
     FAbortSync      : Boolean;
     FEvent          : THandle;
-    FSyncCS         : TCriticalSection;
-    CacheWriteCS    : TCriticalSection;
+    FSyncAddCS      : TCriticalSection;
+    FSyncGetCS      : TCriticalSection;
     threadList      : TList;
-    mdList          : TList; // Queue list, protected by a CriticalSection
-    pList           : TList; // Processing list
+    queueList       : TList; // Queue list, protected by a CriticalSection
+    procList        : TList; // Processing list
+    syncList        : TList; // Sync list, protected by a CriticalSection
   public
     ThreadState     : Integer;
     maxScalers      : Integer; // Maximum active scaling threads
@@ -43,7 +52,7 @@ type
 
     procedure ClearEntries;
     procedure StartProcessing;
-    procedure SyncUpdates;
+    function  GetUpdates : Boolean;
   end;
 
   TImageScalerThread = Class(TThread)
@@ -221,6 +230,7 @@ procedure TImageScalerManagerThread.Execute;
 var
   I              : Integer;
   iComplete      : Integer;
+  syncEntry      : PSyncRecord;
 
   procedure WaitForScalingThreads;
   var
@@ -256,13 +266,14 @@ begin
   Priority           := tpIdle;
   ThreadState        := threadStateCreated;
 
-  maxScalers         := 4; // maximum number of active scaling threads
+  maxScalers         := 2; // maximum number of active scaling threads
 
-  fSyncCS            := TCriticalSection.Create;
-  CacheWriteCS       := TCriticalSection.Create;
+  fSyncAddCS         := TCriticalSection.Create;
+  fSyncGetCS         := TCriticalSection.Create;
   threadList         := TList.Create;
-  pList              := TList.Create;
-  mdList             := TList.Create;
+  procList           := TList.Create;
+  queueList          := TList.Create;
+  syncList           := TList.Create;
 
   FEvent             := CreateEvent(nil,
                           False,    // auto reset
@@ -276,20 +287,20 @@ begin
 
   Repeat
     // Add items to processing list queue, new items first (for better update responsiveness)
-    fSyncCS.Enter;
+    fSyncAddCS.Enter;
     Try
-      For I := mdList.Count-1 downto 0 do
-        pList.Insert(0,mdList[I]);
-      mdList.Clear;
+      For I := queueList.Count-1 downto 0 do
+        procList.Insert(0,queueList[I]);
+      queueList.Clear;
     Finally
-      fSyncCS.Leave;
+      fSyncAddCS.Leave;
     End;
 
     // Start processing
-    While (Terminated = False) and (fAbortSync = False) and (pList.Count > 0) and (threadList.Count < maxScalers) do
+    While (Terminated = False) and (fAbortSync = False) and (procList.Count > 0) and (threadList.Count < maxScalers) do
     Begin
       // Create worker threads
-      With PImageScalerRecord(pList[0])^ do
+      With PImageScalerRecord(procList[0])^ do
       Begin
         threadList.Add(
           TImageScalerThread.Create(
@@ -298,8 +309,8 @@ begin
             scaleIconHeight,
             scaleIconFileName));
       End;
-      Dispose(PImageScalerRecord(pList[0]));
-      pList.Delete(0);
+      Dispose(PImageScalerRecord(procList[0]));
+      procList.Delete(0);
     End;
 
     // Wait for some threads to complete
@@ -313,17 +324,29 @@ begin
       // At least one thread is done, sync updates
       If (iComplete > 0) then
       Begin
-        Synchronize(SyncUpdates);
+        fSyncGetCS.Enter;
+        Try
+          // Process and Clear completed threads
+          For I := threadList.Count-1 downto 0 do
+            If TImageScalerThread(threadList[I]).ThreadState = threadStateFinished then
+          Begin
+            // Add sync entry
+            If TImageScalerThread(threadList[I]).fIconData <> nil then
+            Begin
+              New(syncEntry);
+              syncEntry^.syncIconID   := TImageScalerThread(threadList[I]).fIconID;
+              syncEntry^.syncIconData := TImageScalerThread(threadList[I]).fIconData;
+              syncList.Insert(0,syncEntry);
+            End;  
 
-        // Clear completed threads
-        For I := threadList.Count-1 downto 0 do
-          If TImageScalerThread(threadList[I]).ThreadState = threadStateSynched then
-        Begin
-          // Release thread
-          TImageScalerThread(threadList[I]).Free;
-          threadList.Delete(I);
-        End;
-      End;
+            // Release thread
+            TImageScalerThread(threadList[I]).Free;
+            threadList.Delete(I);
+          End;
+        Finally
+          fSyncGetCS.Leave;
+        End;
+      End;
     End;
 
     If (FAbortSync = True) and (Terminated = False) then
@@ -335,20 +358,30 @@ begin
         ClearScalingThreads;
       End;
 
-      // Clear active list
-      For I := 0 to pList.Count-1 do
-        Dispose(PImageScalerRecord(pList[I]));
-      pList.Clear;
+      // Clear processing list
+      For I := 0 to procList.Count-1 do
+        Dispose(PImageScalerRecord(procList[I]));
+      procList.Clear;
 
 
-      // Clear queue
-      fSyncCS.Enter;
+      // Clear queue list
+      fSyncAddCS.Enter;
       Try
-        For I := mdList.Count-1 downto 0 do
-          Dispose(PImageScalerRecord(mdList[I]));
-        mdList.Clear;
+        For I := queueList.Count-1 downto 0 do
+          Dispose(PImageScalerRecord(queueList[I]));
+        queueList.Clear;
       Finally
-        fSyncCS.Leave;
+        fSyncAddCS.Leave;
+      End;
+
+      // Clear sync list
+      fSyncGetCS.Enter;
+      Try
+        For I := 0 to syncList.Count-1 do
+          Dispose(PSyncRecord(syncList[I]));
+        syncList.Clear;
+      Finally
+        fSyncGetCS.Leave;
       End;
 
       FAbortSync := False;
@@ -357,7 +390,7 @@ begin
     // Wait for next event
     If Terminated = False then
     Begin
-      If (threadList.Count = 0) and (pList.Count = 0) then
+      If (threadList.Count = 0) and (procList.Count = 0) then
       Begin
         ThreadState := threadStateWaiting;
         WaitForSingleObject(FEvent, INFINITE);
@@ -384,30 +417,37 @@ begin
     WaitForScalingThreads;
     ClearScalingThreads;
   End;
+  ThreadState := threadStateCleanup;
 
   CloseHandle(fEvent);
   threadList.Free;
 
-  For I := 0 to pList.Count-1 do
-    Dispose(PImageScalerRecord(pList[I]));
-  pList.Free;
+  For I := 0 to procList.Count-1 do
+    Dispose(PImageScalerRecord(procList[I]));
+  procList.Free;
 
-  For I := 0 to mdList.Count-1 do
-    Dispose(PImageScalerRecord(mdList[I]));
-  mdList.Free;
+  For I := 0 to queueList.Count-1 do
+    Dispose(PImageScalerRecord(queueList[I]));
+  queueList.Free;
 
-  CacheWriteCS.Free;
-  fSyncCS.Free;
+  For I := 0 to syncList.Count-1 do
+    Dispose(PSyncRecord(syncList[I]));
+  syncList.Free;
+
+  fSyncGetCS.Free;
+  fSyncAddCS.Free;
 
   FAbortSync  := False; // Safety measure
 
   ThreadState := threadStateFinished;
 end;
 
+
 procedure TImageScalerManagerThread.StartProcessing;
 begin
   SetEvent(FEvent);
 end;
+
 
 procedure TImageScalerManagerThread.AddEntry(iconSourceID, iconWidth, iconHeight : Integer; iconFileName : String);
 var
@@ -421,11 +461,11 @@ begin
     nEntry^.scaleIconID       := iconSourceID;
     nEntry^.scaleIconFileName := iconFileName;
 
-    fSyncCS.Enter;
+    fSyncAddCS.Enter;
     Try
-      mdList.Add(nEntry);
+      queueList.Add(nEntry);
     Finally
-      fSyncCS.Leave;
+      fSyncAddCS.Leave;
     End;
   End;
 end;
@@ -448,53 +488,45 @@ begin
 End;
 
 
-procedure TImageScalerManagerThread.SyncUpdates;
+function TImageScalerManagerThread.GetUpdates : Boolean;
 var
-  I             : Integer;
-  iCount        : Integer;
+  I          : Integer;
+  updateList : TList;
+  iID        : Integer;
 begin
-  If Terminated = False then
-  Begin
-    If fAbortSync = False then
+  updateList := nil;
+  Result     := False;
+
+  fSyncGetCS.Enter;
+  Try
+    If syncList.Count > 0 then
     Begin
-      iCount := 0;
-      For I := threadList.Count-1 downto 0 do
-      Begin
-        If TImageScalerThread(threadList[I]).ThreadState = threadStateFinished then
-        Begin
-          TImageScalerThread(threadList[I]).ThreadState := threadStateSynched;
-
-          // Sync TGDBitmaps with main thread based on IconID
-          If TImageScalerThread(threadList[I]).fIconData <> nil then
-          Begin
-            // MyIconList is a list of TGDBitmap;
-            MainForm.iconList[TImageScalerThread(threadList[I]).fIconID] := TImageScalerThread(threadList[I]).fIconData;
-            Inc(iCount);
-          End;
-        End;
-      End;
-
-      If iCount > 0 then
-      Begin
-        // Update the UI as-needed
-        If uiAnimating = False then
-          MainForm.DrawUserInterface else
-          delayedDrawUserInterface := True;
-      End;
-    End
-      else
-    Begin
-      // Release queued entries
-      For I := 0 to pList.Count-1 do
-        Dispose(PImageScalerRecord(pList[I]));
-      pList.Clear;
-
-      For I := 0 to mdList.Count-1 do
-        Dispose(PImageScalerRecord(mdList[I]));
-      mdList.Clear;
-      fAbortSync := False;
+      UpdateList := TList.Create;
+      UpdateList.Assign(syncList);
+      syncList.Clear;
     End;
+  Finally
+    fSyncGetCS.Leave;
+  End;
+
+  If updateList <> nil then
+  Begin
+    For I := 0 to updateList.Count-1 do
+    Begin
+      iID := PSyncRecord(updateList[I])^.syncIconID;
+      If (iID > -1) and (iID < MainForm.iconList.Count) then
+      Begin
+        If MainForm.iconList[iID] <> nil then
+          TGPBitmap(MainForm.iconList[iID]).Free;
+
+        MainForm.iconList[iID] := PSyncRecord(updateList[I])^.syncIconData;
+        Result := True;
+      End;
+      Dispose(PSyncRecord(updateList[I]));
+    End;
+    updateList.Free;
   End;
 end;
+
 
 end.

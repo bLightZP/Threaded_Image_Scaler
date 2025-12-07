@@ -1,3 +1,5 @@
+{.$DEFINE UseThreadedDraw}
+
 //
 // Multi-threaded background load & scale demo application
 //
@@ -13,7 +15,7 @@
 //
 //
 // Flag images courtsey - https://flagpedia.net
-// 
+//
 
 
 
@@ -27,20 +29,20 @@ uses
 
 
 const
-  resizeTargetRes : Integer = 96; // Resized image maximum resolution in Pixels
-  maxThreads      : Integer = 4;  // Number of active loading and resizing work threads (not including manager)
+  maxThreads      : Integer = 2;  // Number of active loading and resizing work threads (not including manager)
 
 type
   TMainForm = class(TForm)
     IndexTimer: TTimer;
+    updateTimer: TTimer;
     procedure FormKeyPress(Sender: TObject; var Key: Char);
     procedure FormShow(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure FormCreate(Sender: TObject);
     procedure FormClick(Sender: TObject);
     procedure IndexTimerTimer(Sender: TObject);
-    procedure FormKeyDown(Sender: TObject; var Key: Word;
-      Shift: TShiftState);
+    procedure FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure updateTimerTimer(Sender: TObject);
   private
     { Private declarations }
   public
@@ -53,11 +55,12 @@ type
     iTextMargin : Integer;
     iTextWidth  : Integer;
     iTextHeight : Integer;
+    iIconSize   : Integer;
     iLineHeight : Integer;
     iLineCount  : Integer;
     iCenterY    : Integer;
     iItemIndex  : Integer;
-    
+
     // Colors
     bgColor           : Cardinal;
     activeTextColor   : Cardinal;
@@ -74,20 +77,25 @@ type
     procedure SetNewIndex(newIndex : Integer);
   end;
 
+
+  {$IFDEF UseThreadedDraw}
   // Screen update animation thread
   TImageUpdateThread = Class(TThread)
     procedure Execute; override;
   public
     procedure DrawFrame;
   end;
+  {$ENDIF}
 
 
 var
   MainForm                 : TMainForm;
   uiAnimating              : Boolean = False;
-  delayedDrawUserInterface : Boolean = False;
   threadManager            : TImageScalerManagerThread;
+
+  {$IFDEF UseThreadedDraw}
   imageUpdateThread        : TImageUpdateThread;
+  {$ENDIF}
 
 
 implementation
@@ -95,22 +103,25 @@ implementation
 {$R *.dfm}
 
 
+{$IFDEF UseThreadedDraw}
 procedure TImageUpdateThread.Execute;
 var
   groupTimer   : THandle;
   timerDueTime : Int64;
   timerPeriod  : Integer;
 begin
-  FreeOnTerminate := True;
-  timerDueTime := -10000 * 10;
-  timerPeriod  := 10;
-  groupTimer   := CreateWaitableTimer(nil, False, nil);
+  FreeOnTerminate := False;
+  timerDueTime    := -10000 * 10; // 10ms, 100fps
+  timerPeriod     := 10;
+  groupTimer      := CreateWaitableTimer(nil, False, nil);
+
   SetWaitableTimer(groupTimer, timerDueTime, timerPeriod, nil, nil, False);
 
   while not Terminated do
   begin
     WaitForSingleObject(groupTimer, INFINITE);
-    Synchronize(DrawFrame);
+    If Terminated = False then
+      Synchronize(DrawFrame);
   end;
 
   CancelWaitableTimer(groupTimer);
@@ -120,24 +131,29 @@ end;
 
 procedure TImageUpdateThread.DrawFrame;
 var
-  iUpdate : Integer;
+  drawUI  : Boolean;
 begin
-  If (MainForm.iScrollOfs = 0) and (delayedDrawUserInterface = False) then
+  drawUI := False;
+  If threadManager <> nil then
+    drawUI := threadManager.GetUpdates;
+
+  If (MainForm.iScrollOfs = 0) and (drawUI = False) then
     Exit;
 
   If (Terminated = False) then
   Begin
+    // Animate scrolling
     If MainForm.iScrollOfs <> 0 then
     Begin
+      drawUI              := True;
       MainForm.iScrollOfs := Trunc(MainForm.iScrollOfs*0.9);
     End;
-    If delayedDrawUserInterface = True then
-    Begin
-      delayedDrawUserInterface := False;
-    End;
-    MainForm.DrawUserInterface;
+
+    If drawUI = True then
+      MainForm.DrawUserInterface;
   End;
 end;
+{$ENDIF}
 
 
 function BuildRoundedRectPath(iX, iY, iW, iH, iRadius: Integer): TGPGraphicsPath;
@@ -218,18 +234,28 @@ begin
   threadManager := TImageScalerManagerThread.Create(False);
   threadManager.maxScalers := maxThreads;
 
+  DrawUserInterface;
+
+  {$IFDEF UseThreadedDraw}
   // User interface update thread
   imageUpdateThread := TImageUpdateThread.Create(False);
-
-  DrawUserInterface;
-end;
+  {$ELSE}
+  updateTimer.Enabled := True;
+  {$ENDIF}
+End;
 
 
 procedure TMainForm.FormClose(Sender: TObject; var Action: TCloseAction);
 var
   I : Integer;
 begin
+  {$IFDEF UseThreadedDraw}
   imageUpdateThread.Terminate;
+  imageUpdateThread.WaitFor;
+  imageUpdateThread.Free;
+  {$ELSE}
+  updateTimer.Enabled := False;
+  {$ENDIF}
 
   If bgBitmap <> nil then
   Begin
@@ -276,12 +302,10 @@ begin
 
     // Add icons for decoding and scaling to within the desired frame-size (96x96)
     For I := 0 to fileList.Count-1 do
-      threadManager.AddEntry(I,resizeTargetRes,resizeTargetRes,ExtractFilePath(ParamStr(0))+'flags\'+fileList[I]);
+      threadManager.AddEntry(I,iIconSize,iIconSize,ExtractFilePath(ParamStr(0))+'flags\'+fileList[I]);
 
     // Start processing
     threadManager.StartProcessing;
-
-    ShowMessage('done');
   End;
 end;
 
@@ -309,6 +333,7 @@ var
   bmpsize              : TSize;
 
   // GDI+
+  drawBitmap           : TGPBitmap;
   ovPath               : TGPGraphicsPath;
   ovBrush              : TGPSolidBrush;
   ovStringRect         : TGPRectF;
@@ -360,6 +385,7 @@ begin
     iTextWidth     := clientWidth-(iTextMargin*2);
     iLineHeight    := clientHeight div 12;
     iTextHeight    := Trunc(iLineHeight * 0.5);
+    iIconSize      := Trunc(iLineHeight * 0.8);
     iCenterY       := (clientHeight div 2) - (iLineHeight div 2);
     iLineCount     := clientHeight div iLineHeight;
 
@@ -375,7 +401,7 @@ begin
     ovFont         := TGPFont.Create(ovFontFamily, iTextHeight, FontStyleRegular, UnitPixel);
 
     bgBitmap.Assign(bgBitmapSrc);
-    bgBitmap.Canvas.Lock;
+    bgBitmap.Canvas.Lock; // To prevent GDI+'s ovGDIGraphics from losing the handle
 
     ovGDIGraphics  := TGPGraphics.Create(bgBitmap.Canvas.Handle);
   End
@@ -404,6 +430,20 @@ begin
       ovStringRect.Width  := iTextWidth;
       ovStringRect.X      := iTextMargin;
       ovStringRect.Y      := yOfs;
+
+      If iconList[I] <> nil then
+      Begin
+        // Draw icon
+        drawBitmap := TGPBitmap(iconList[I]);
+        ovGDIGraphics.DrawImage(
+          drawBitmap,
+          iTextMargin,
+          yOfs+((iLineHeight-drawBitmap.GetHeight) div 2),
+          drawBitmap.GetWidth,
+          drawBitmap.GetHeight);
+        ovStringRect.X     := ovStringRect.X+(drawBitmap.GetWidth+iTextMargin);
+        ovStringRect.Width := ovStringRect.Width-(drawBitmap.GetWidth+iTextMargin);
+      End;
 
       // Highlight active group item BG
       If I = iItemIndex then
@@ -473,5 +513,29 @@ begin
      VK_SPACE : IndexTimer.Enabled := not IndexTimer.Enabled;
    End;
 end;
+
+
+procedure TMainForm.updateTimerTimer(Sender: TObject);
+var
+  drawUI  : Boolean;
+begin
+  drawUI := False;
+  If threadManager <> nil then
+    drawUI := threadManager.GetUpdates;
+
+  If (MainForm.iScrollOfs = 0) and (drawUI = False) then
+    Exit;
+
+  // Animate scrolling
+  If MainForm.iScrollOfs <> 0 then
+  Begin
+    drawUI              := True;
+    MainForm.iScrollOfs := Trunc(MainForm.iScrollOfs*0.9);
+  End;
+
+  If drawUI = True then
+    MainForm.DrawUserInterface;
+end;
+
 
 end.
