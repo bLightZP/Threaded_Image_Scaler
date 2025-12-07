@@ -6,6 +6,8 @@ This demo decodes and scales images in the background as soon as you click the m
 
 While the images are loaded and scaled, anti-aliased text is drawn against a semi-transparent layered window with rounded rectangle corners.
 
+As soon as images are loaded, they are drawn next to the text.
+
 You can use the keyboard to navigate the list or press space to animate to a random list position every 1000ms.
 
 The demo also showcases how to use GDI+ to create a per-pixel semi-transparent window with rounded corners and animated scrolling text.
