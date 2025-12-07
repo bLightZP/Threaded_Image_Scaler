@@ -43,6 +43,8 @@ type
     procedure IndexTimerTimer(Sender: TObject);
     procedure FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure updateTimerTimer(Sender: TObject);
+    procedure FormMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
+    procedure FormMouseWheel(Sender: TObject; Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
   private
     { Private declarations }
   public
@@ -453,9 +455,14 @@ begin
       // Draw Text
       sText   := '#'+IntToStr(I)+' : '+fileList[I];
 
-      If I = 0 then sText := sText+' | Press Up/Down/Space to animation';
-      If I = 1 then sText := sText+' | Click to load/reload flags';
-
+      // Some usage notes
+      Case I of
+        0 : sText := sText+' | Use Up/Down/Wheel to scroll';
+        1 : sText := sText+' | Press Space to randomly scroll';
+        2 : sText := sText+' | Click to load/reload flags';
+        3 : sText := sText+' | Draw to move window';
+        4 : sText := sText+' | ESC to close';
+      End;
       iStatus := ovGDIGraphics.DrawString(sText, -1, ovFont, ovStringRect, ovStringFormat, ovBrush);
     End;
   End;
@@ -541,5 +548,23 @@ begin
     MainForm.DrawUserInterface;
 end;
 
+
+procedure TMainForm.FormMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
+begin
+  // Draw with mouse to move form
+  If Shift = [ssLeft] then
+  Begin
+    ReleaseCapture;
+    PostMessage(MainForm.Handle,WM_SYSCOMMAND,$F012,0);
+  End;
+end;
+
+
+procedure TMainForm.FormMouseWheel(Sender: TObject; Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
+begin
+  If WheelDelta > 0 then
+    SetNewIndex(iItemIndex-1) else
+    SetNewIndex(iItemIndex+1);
+end;
 
 end.

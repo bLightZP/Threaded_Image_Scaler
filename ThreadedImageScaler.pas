@@ -337,7 +337,7 @@ begin
               syncEntry^.syncIconID   := TImageScalerThread(threadList[I]).fIconID;
               syncEntry^.syncIconData := TImageScalerThread(threadList[I]).fIconData;
               syncList.Insert(0,syncEntry);
-            End;  
+            End;
 
             // Release thread
             TImageScalerThread(threadList[I]).Free;
