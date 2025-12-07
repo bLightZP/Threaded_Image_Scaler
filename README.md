@@ -13,3 +13,5 @@ You can use the keyboard to navigate the list or press space to animate to a ran
 The demo also showcases how to use GDI+ to create a per-pixel semi-transparent window with rounded corners and animated scrolling text.
 
 Flag images courtsey - https://flagpedia.net
+
+<img width="1750" height="1069" alt="image" src="https://github.com/user-attachments/assets/42b2f163-1712-4da4-b73c-34c6e73cb9a9" />
