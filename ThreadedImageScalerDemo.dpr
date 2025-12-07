@@ -1,6 +1,9 @@
 program ThreadedImageScalerDemo;
 
 uses
+  FastMM4,
+  FastMove,
+  FastCode,
   Forms,
   MainUnit in 'MainUnit.pas' {MainForm};
 
