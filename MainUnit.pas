@@ -451,7 +451,11 @@ begin
         ovBrush.SetColor(inactiveTextColor);
 
       // Draw Text
-      sText   := '#'+IntToStr(I)+' : '+fileList[I]+' flag';
+      sText   := '#'+IntToStr(I)+' : '+fileList[I];
+
+      If I = 0 then sText := sText+' | Press Up/Down/Space to animation';
+      If I = 1 then sText := sText+' | Click to load/reload flags';
+
       iStatus := ovGDIGraphics.DrawString(sText, -1, ovFont, ovStringRect, ovStringFormat, ovBrush);
     End;
   End;
