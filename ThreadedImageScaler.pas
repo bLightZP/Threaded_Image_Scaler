@@ -201,6 +201,10 @@ var
   begin
     // Decode & Scale the images
     syncGDIImage := GDIPLoadBitmapFromStream(memStream);
+
+    // YIELD HERE: Give the Main Thread a chance to draw before we start the heavy scaling (AI advice, not sure if it helps).
+    Sleep(5);
+
     If (syncGDIImage <> nil) then
     Begin
       // Resize GDI+ image
@@ -212,15 +216,20 @@ var
 
 
 begin
-  mStream    := TMemoryStream.Create;
+  CoInitialize(nil); // Initialize COM for this thread
+  Try
+    mStream    := TMemoryStream.Create;
 
-  GetFileFromCache(fIconFileName,mStream);
+    GetFileFromCache(fIconFileName,mStream);
 
-  If (mStream.Size > 0) and (Terminated = False) then
-    DecodeAndResizeImage(mStream);
+    If (mStream.Size > 0) and (Terminated = False) then
+      DecodeAndResizeImage(mStream);
 
-  mStream.Free;
-  ThreadState := threadStateFinished;
+    mStream.Free;
+    ThreadState := threadStateFinished;
+  Finally
+    CoUninitialize; // Clean up
+  End;
 end;
 
 
