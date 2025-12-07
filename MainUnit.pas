@@ -460,7 +460,7 @@ begin
         0 : sText := sText+' | Use Up/Down/Wheel to scroll';
         1 : sText := sText+' | Press Space to randomly scroll';
         2 : sText := sText+' | Click to load/reload flags';
-        3 : sText := sText+' | Draw to move window';
+        3 : sText := sText+' | Drag to move window';
         4 : sText := sText+' | ESC to close';
       End;
       iStatus := ovGDIGraphics.DrawString(sText, -1, ovFont, ovStringRect, ovStringFormat, ovBrush);
