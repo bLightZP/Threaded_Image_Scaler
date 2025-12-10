@@ -1,4 +1,5 @@
-{.$DEFINE UseThreadedDraw}
+{.$DEFINE USEGDIPLUS}
+{$DEFINE UseThreadedDraw}
 
 //
 // Multi-threaded background load & scale demo application
@@ -25,11 +26,8 @@ interface
 
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
-  Dialogs, ThreadedImageScaler, GDIPAPI ,GDIPOBJ, ExtCtrls;
+  Dialogs, ThreadedImageScaler, GDIPAPI ,GDIPOBJ, ExtCtrls{$IFNDEF USEGDIPLUS},VDubResize{$ENDIF};
 
-
-const
-  maxThreads      : Integer = 2;  // Number of active loading and resizing work threads (not including manager)
 
 type
   TMainForm = class(TForm)
@@ -234,7 +232,6 @@ begin
   // Scaling manager thread
 
   threadManager := TImageScalerManagerThread.Create(False);
-  threadManager.maxScalers := maxThreads;
 
   DrawUserInterface;
 
@@ -264,6 +261,8 @@ begin
     bgBitmap.Canvas.Unlock;  
     bgBitmap.Free;
   End;
+  If bgBitmapSrc <> nil then
+    bgBitmapSrc.Free;
   fileList.Free;
 
   For I := 0 to iconList.Count-1 do
@@ -298,7 +297,11 @@ begin
     For I := 0 to fileList.Count-1 do
       If iconList[I] <> nil then
     Begin
+      {$IFDEF USEGDIPLUS}
       TGPBitmap(iconList[I]).Free;
+      {$ELSE}
+      TBitmap(iconList[I]).Free;
+      {$ENDIF}
       iconList[I] := nil;
     End;
 
@@ -335,7 +338,12 @@ var
   bmpsize              : TSize;
 
   // GDI+
+  {$IFDEF USEGDIPLUS}
   drawBitmap           : TGPBitmap;
+  {$ELSE}
+  drawBitmap           : TBitmap;
+  {$ENDIF}
+
   ovPath               : TGPGraphicsPath;
   ovBrush              : TGPSolidBrush;
   ovStringRect         : TGPRectF;
@@ -349,6 +357,9 @@ var
   sText                : WideString;
 
 begin
+  {$IFDEF USEGDIPLUS}
+  gdiLock := True;
+  {$ENDIF}
   If bgBitmapSrc = nil then
   Begin
     // Initialization
@@ -436,6 +447,7 @@ begin
       If iconList[I] <> nil then
       Begin
         // Draw icon
+        {$IFDEF USEGDIPLUS}
         drawBitmap := TGPBitmap(iconList[I]);
         ovGDIGraphics.DrawImage(
           drawBitmap,
@@ -445,6 +457,17 @@ begin
           drawBitmap.GetHeight);
         ovStringRect.X     := ovStringRect.X+(drawBitmap.GetWidth+iTextMargin);
         ovStringRect.Width := ovStringRect.Width-(drawBitmap.GetWidth+iTextMargin);
+        {$ELSE}
+        drawBitmap := TBitmap(iconList[I]);
+
+        DrawAlphaBitmap(bgBitmap.Canvas,iTextMargin,yOfs+((iLineHeight-drawBitmap.Height) div 2),drawBitmap);
+
+        //bgBitmap.Canvas.Draw(iTextMargin,yOfs+((iLineHeight-drawBitmap.Height) div 2),drawBitmap);
+        //BitBlt(bgBitmap.Canvas.Handle,iTextMargin,yOfs+((iLineHeight-drawBitmap.Height) div 2),drawBitmap.Width,drawBitmap.Height,drawBitmap.Canvas.Handle,0,0,SRCCOPY);
+
+        ovStringRect.X     := ovStringRect.X+(drawBitmap.Width+iTextMargin);
+        ovStringRect.Width := ovStringRect.Width-(drawBitmap.Width+iTextMargin);
+        {$ENDIF}
       End;
 
       // Highlight active group item BG
@@ -486,6 +509,10 @@ begin
     // Should never happen
     Close;
   end;
+
+  {$IFDEF USEGDIPLUS}
+  gdiLock := False;
+  {$ENDIF}
 end;
 
 

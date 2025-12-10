@@ -1,12 +1,20 @@
+{.$DEFINE USEGDIPLUS}
+
 unit ThreadedImageScaler;
+
 
 interface
 
 
 uses
   Windows, Messages, SysUtils, StdCtrls, Variants, Classes, Graphics, Controls, ActiveX, syncobjs,
-  Dialogs, ExtCtrls, GDIPAPI ,GDIPOBJ;
-
+  Dialogs, ExtCtrls
+  {$IFDEF USEGDIPLUS}
+  , GDIPAPI ,GDIPOBJ
+  {$ELSE}
+  , ImageProcUnit, WICBitmapLoader
+  {$ENDIF}
+  ;
 
 const
   threadStateCreated    = 0;
@@ -14,7 +22,6 @@ const
   threadStateProcessing = 2;
   threadStateCleanup    = 254;
   threadStateFinished   = 255;
-  //threadStateSynched    = 256;
 
 type
   // Meta-data scraping record
@@ -30,7 +37,11 @@ type
   TSyncRecord =
   Record
     syncIconID               : Integer;
+    {$IFDEF USEGDIPLUS}
     syncIconData             : TGPBitmap;
+    {$ELSE}
+    syncIconData             : TBitmap;
+    {$ENDIF}
   End;
   PSyncRecord = ^TSyncRecord;
 
@@ -59,7 +70,11 @@ type
     procedure Execute; override;
   private
   public
+    {$IFDEF USEGDIPLUS}
     fIconData     : TGPBitmap;
+    {$ELSE}
+    fIconData     : TBitmap;
+    {$ENDIF}
     fIconWidth    : Integer;
     fIconHeight   : Integer;
     fIconID       : Integer;
@@ -68,6 +83,10 @@ type
     constructor Create(const iconID, iconWidth, iconHeight : Integer; iconFileName : String);
   end;
 
+{$IFDEF USEGDIPLUS}
+var
+  gdiLock : Boolean = False;
+{$ENDIF}
 
 implementation
 
@@ -76,7 +95,7 @@ uses
 
 
 // GDI+ helper functions
-
+{$IFDEF USEGDIPLUS}
 function GDIPLoadBitmapFromStream(AStream: TStream) : TGPBitmap;
 var
   LImg: TGPBitmap;
@@ -156,6 +175,7 @@ begin
     LGraphics.Free;
   end;
 end;
+{$ENDIF}
 
 
 // Worker thread
@@ -181,7 +201,6 @@ procedure TImageScalerThread.Execute;
 var
   I                : Integer;
   mStream          : TMemoryStream;
-  sExt             : String;
 
   procedure GetFileFromCache(var sFile : String; var memStream : TMemoryStream);
   var
@@ -197,27 +216,120 @@ var
 
   procedure DecodeAndResizeImage(var memStream : TMemoryStream);
   var
-    syncGDIImage     : TGPBitmap;
+    sExt         : String;
+  {$IFDEF USEGDIPLUS}
+    syncGDIImage : TGPBitmap;
+  {$ELSE}
+    srcImage     : TBitmap;
+    srcWidth     : Integer;
+    srcHeight    : Integer;
+    newWidth     : Integer;
+    newHeight    : Integer;
+  {$ENDIF}
   begin
     // Decode & Scale the images
+    {$IFDEF USEGDIPLUS}
+    // Don't take action while UI is drawing (GDI+ uses serialized actions)
+    While (gdiLock = True) and (Terminated = False) do
+      Sleep(1);
     syncGDIImage := GDIPLoadBitmapFromStream(memStream);
-
-    // YIELD HERE: Give the Main Thread a chance to draw before we start the heavy scaling (AI advice, not sure if it helps).
-    Sleep(5);
 
     If (syncGDIImage <> nil) then
     Begin
+    // Don't take action while UI is drawing (GDI+ uses serialized actions)
+      While (gdiLock = True) and (Terminated = False) do
+        Sleep(1);
       // Resize GDI+ image
       If Terminated = False then
         fIconData := GDIPScaleGPBitmapToGDBitmapMaintainAR(syncGDIImage,fIconWidth, fIconHeight);
       syncGDIImage.Free;
     End;
+    {$ELSE}
+    srcImage := TBitmap.Create;
+    If LoadBitmapWIC32(memStream,srcImage) = True then
+    Begin
+      If srcImage.PixelFormat <> pf32bit then
+        srcImage.PixelFormat := pf32bit;
+
+      srcWidth  := srcImage.Width;
+      srcHeight := srcImage.Height;
+      srcImage.Canvas.Lock;
+      {$IFDEF SCRAPERLOG}DebugMsgFT('c:\log\.Streaming_scraper_thread_'+IntToHex(ThreadID,8)+'.txt','Image loaded');{$ENDIF}
+      // Resize images
+      If FitInBoundingBox(srcWidth,srcHeight,fIconWidth,fIconHeight,newWidth,newHeight) = True then
+      Begin
+        fIconData := TBitmap.Create;
+        fIconData.PixelFormat := pf32bit;
+        fIconData.Canvas.Lock;
+        fIconData.Width  := newWidth;
+        fIconData.Height := newHeight;
+        ImageFactorResize(srcImage,fIconData,0,0,srcWidth,srcHeight,0,0,newWidth,newHeight);
+        fIconData.Canvas.Unlock;
+      End; // End Case
+      srcImage.Canvas.Unlock;
+    End;
+    srcImage.Free;
+
+    {sExt := GetDetectedImageExt(memStream);
+
+    If sExt = '.png' then
+    Begin
+      syncPNGImage := TPNGObject.Create;
+      Try
+        syncPNGImage.LoadFromStream(memStream);
+      Except
+        On E : Exception do
+        Begin
+          syncPNGImage.Free;
+          syncPNGImage := nil;
+        End;
+      End; // Try Except
+
+      If syncPNGImage <> nil then
+      Begin
+        syncImage := TBitmap.Create;
+        syncImage.PixelFormat := pf32bit;
+        syncImage.Width       := syncPNGImage.Width;
+        syncImage.Height      := syncPNGImage.Height;
+
+        syncImage.Canvas.Lock;
+        syncImage.Assign(syncPNGImage);
+
+        If syncImage.PixelFormat <> pf32Bit then
+          syncImage.PixelFormat := pf32Bit;
+
+        // PNGImage loads non-transparent images as 24bit with alpha set to 0
+        If syncPNGImage.TransparencyMode <> ptmPartial then
+          SetBitmapAlpha(syncImage,255);
+
+        //syncImage.SaveToFile('c:\log\test.bmp');
+
+        fIconData := TBitmap.Create;
+        fIconData.PixelFormat := pf32bit;
+        fIconData.Width  := fIconWidth;
+        fIconData.Height := fIconHeight;
+        fIconData.Canvas.Lock;
+        ImageVDubResize(syncImage,fIconData,VDubContext);
+        //ImageBilinearResize(syncImage,fIconData,0,0,syncImage.Width,syncImage.Height,0,0,fIconData.Width,fIconData.Height,VDubContext);
+        //SmoothResize(syncImage,fIconData);
+        fIconData.Canvas.Unlock;
+        syncImage.Canvas.Unlock;
+
+        //fIconData.SaveToFile('c:\log\test.bmp');
+
+        syncImage.Free;
+        syncPNGImage.Free;
+      End;
+    End;}
+    {$ENDIF}
   end; // DecodeAndResizeImage
 
 
 begin
+  {$IFDEF USEGDIPLUS}
   CoInitialize(nil); // Initialize COM for this thread
   Try
+  {$ENDIF}
     mStream    := TMemoryStream.Create;
 
     GetFileFromCache(fIconFileName,mStream);
@@ -227,9 +339,11 @@ begin
 
     mStream.Free;
     ThreadState := threadStateFinished;
+  {$IFDEF USEGDIPLUS}
   Finally
     CoUninitialize; // Clean up
   End;
+  {$ENDIF}
 end;
 
 
@@ -275,7 +389,7 @@ begin
   Priority           := tpIdle;
   ThreadState        := threadStateCreated;
 
-  maxScalers         := 2; // maximum number of active scaling threads
+  maxScalers         := 4; // maximum number of active scaling threads
 
   fSyncAddCS         := TCriticalSection.Create;
   fSyncGetCS         := TCriticalSection.Create;
@@ -526,7 +640,11 @@ begin
       If (iID > -1) and (iID < MainForm.iconList.Count) then
       Begin
         If MainForm.iconList[iID] <> nil then
+        {$IFDEF USEGDIPLUS}
           TGPBitmap(MainForm.iconList[iID]).Free;
+        {$ELSE}
+          TBitmap(MainForm.iconList[iID]).Free;
+        {$ENDIF}
 
         MainForm.iconList[iID] := PSyncRecord(updateList[I])^.syncIconData;
         Result := True;
@@ -536,6 +654,12 @@ begin
     updateList.Free;
   End;
 end;
+
+
+
+
+
+
 
 
 end.
