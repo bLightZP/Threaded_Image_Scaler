@@ -269,58 +269,6 @@ var
       srcImage.Canvas.Unlock;
     End;
     srcImage.Free;
-
-    {sExt := GetDetectedImageExt(memStream);
-
-    If sExt = '.png' then
-    Begin
-      syncPNGImage := TPNGObject.Create;
-      Try
-        syncPNGImage.LoadFromStream(memStream);
-      Except
-        On E : Exception do
-        Begin
-          syncPNGImage.Free;
-          syncPNGImage := nil;
-        End;
-      End; // Try Except
-
-      If syncPNGImage <> nil then
-      Begin
-        syncImage := TBitmap.Create;
-        syncImage.PixelFormat := pf32bit;
-        syncImage.Width       := syncPNGImage.Width;
-        syncImage.Height      := syncPNGImage.Height;
-
-        syncImage.Canvas.Lock;
-        syncImage.Assign(syncPNGImage);
-
-        If syncImage.PixelFormat <> pf32Bit then
-          syncImage.PixelFormat := pf32Bit;
-
-        // PNGImage loads non-transparent images as 24bit with alpha set to 0
-        If syncPNGImage.TransparencyMode <> ptmPartial then
-          SetBitmapAlpha(syncImage,255);
-
-        //syncImage.SaveToFile('c:\log\test.bmp');
-
-        fIconData := TBitmap.Create;
-        fIconData.PixelFormat := pf32bit;
-        fIconData.Width  := fIconWidth;
-        fIconData.Height := fIconHeight;
-        fIconData.Canvas.Lock;
-        ImageVDubResize(syncImage,fIconData,VDubContext);
-        //ImageBilinearResize(syncImage,fIconData,0,0,syncImage.Width,syncImage.Height,0,0,fIconData.Width,fIconData.Height,VDubContext);
-        //SmoothResize(syncImage,fIconData);
-        fIconData.Canvas.Unlock;
-        syncImage.Canvas.Unlock;
-
-        //fIconData.SaveToFile('c:\log\test.bmp');
-
-        syncImage.Free;
-        syncPNGImage.Free;
-      End;
-    End;}
     {$ENDIF}
   end; // DecodeAndResizeImage
 
@@ -654,12 +602,6 @@ begin
     updateList.Free;
   End;
 end;
-
-
-
-
-
-
 
 
 end.
